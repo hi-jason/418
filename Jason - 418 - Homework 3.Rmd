@@ -14,9 +14,9 @@ Overview:
 The purpose is to use an UCI dataset as an exploration into machine learning packages with the goal of predicting if someone earns more than $50K/year
 
 Scope of machine learning methods:
-- Logistical Regression (R package glmnet)
-- Logistical Regression with Lasso
-- Logistical Regression (H20)
+- Logistic Regression (R package glmnet)
+- Logistic Regression with Lasso
+- Logistic Regression (H20)
 - Random Forest (R package xgboost)
 - Gradient Boosting Machines (R package xgboost)
 
@@ -163,7 +163,7 @@ X_val <- X_valtest[id_valtest,]
 X_test <- X_valtest[-id_valtest,]
 
 ```
-Logistical Regression with R package glmnet
+Logistic Regression with R package glmnet
 
 ```{r glmnet}
 LRmd <- glmnet( X_train, d_train$goal, family = "binomial", lambda = 0)
@@ -175,7 +175,7 @@ performance(rocr_pred, "auc")@y.values[[1]]
 
 ```
 ```{r LRplot, echo=FALSE}
-plot(performance(rocr_pred, "tpr", "fpr"), main="ROC Curve - Logistical Regression (Validation)")
+plot(performance(rocr_pred, "tpr", "fpr"), main="ROC Curve - Logistic Regression (Validation)")
 
 ```
 The ROC curve is a graph of true positive rate versus false postive rate.  The steeper the line moves towards true positive the better the prediction.  The AUC (area under the curve) is 0.9037 which seems pretty good already without regularization and is higher than the 0.5 (a 50/50 probabilty).
@@ -206,11 +206,11 @@ performance(rocr_predlrmd3, "auc")@y.values[[1]]
 
 
 ```
-Lambda is very low which is why when the model was set to the minimum of lambda it was roughly the equivalent of logistical regression with no lambda.  It seems in the validation set, that no lambda was slightly better but just slight difference (0.00004).
+Lambda is very low which is why when the model was set to the minimum of lambda it was roughly the equivalent of logistic regression with no lambda.  It seems in the validation set, that no lambda was slightly better but just slight difference (0.00004).
 
 
 ```{r plot of lambda, echo=FALSE}
-plot(performance(rocr_predlrmd3, "tpr", "fpr"), main="ROC Curve - Logistical Regression (Val) w/Lambda")
+plot(performance(rocr_predlrmd3, "tpr", "fpr"), main="ROC Curve - Logistic Regression (Val) w/Lambda")
 
 ```
 Using H20 with logistic regression
