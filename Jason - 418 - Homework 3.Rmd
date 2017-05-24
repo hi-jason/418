@@ -1,0 +1,435 @@
+---
+title: 'Stats418-Machine Learning #3'
+author: "Jason"
+date: "May 23, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part1
+Overview:
+The purpose is to use an UCI dataset as an exploration into machine learning packages with the goal of predicting if someone earns more than $50K/year
+
+Scope of machine learning methods:
+- Logistical Regression (R package glmnet)
+- Logistical Regression with Lasso
+- Logistical Regression (H20)
+- Random Forest (R package xgboost)
+- Gradient Boosting Machines (R package xgboost)
+
+Data:
+This machine learning homework is based on the UCI dataset Census and Income located here: https://archive.ics.uci.edu/ml/datasets/Census+Income.  It is US 1994 Census data setup with each row of data as an individual.  The goal of the dataset is to predict if an individual makes more than $50k/year or less.  There are a total of 48k observations and 14 attributes.
+
+Setup Notes & Issues:
+- A quick look at the goal and about 2/3 of the dataset population make less than $50K/year   
+- Online, the author has already split the dataset to train and test.  The train file didn't meet the homework requirements for the amount of positive results alone.  I therefore merged the two together and then split it based on my own random number (set.seed(123)).
+- Original authors eliminated all rows with Nulls reducing the observations from 48k to 45k (7%).  As the goal is to explore several machine learning packages and compare AUC and as it still is a significant number, I'm going to elminate null value rows.  A future project could look into predicting and filling in the gaps.
+- The variable education which describes the most education tier the individual accomplished is very similar to the education-num which is the numerical equivalent. 
+- The data is not ready for entering into the various models as its not binary, or factors and needs to be adjusted to machine learning packages
+- I have transformed attributes into a binary and factors
+- I have added categories which summarizes several underlining variables 
+
+
+```{r getfiles, echo=FALSE}
+set.seed(123)
+library(data.table)
+library(dplyr)
+library(xgboost)
+library(h2o)
+library(glmnet)
+library(ROCR)
+
+data1 <- fread('https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data')
+head(data1,2L)
+data2 <- fread('https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test',autostart = 2)
+head(data2,2L)
+dim(data1)
+#data1: Observations: 32,561   Columns: 15 
+dim(data2)
+data1<-as.data.table(data1)
+data2<-as.data.table(data2)
+#data2: Observations: 16,281   Columns: 15
+
+colnames(data1) <- c("age","workclass","fnlwgt","education","educationnum","maritalstatus","occupation","relationship","race","sex","capitalgain","capitalloss","hoursperweek","nativecountry","class")
+colnames(data2) <- c("age","workclass","fnlwgt","education","educationnum","maritalstatus","occupation","relationship","race","sex","capitalgain","capitalloss","hoursperweek","nativecountry","class")
+
+#GLMNET doesnt like '-' in names!!!
+
+data3<-rbind(data1,data2)
+
+#data2: Observations: 48,842   Columns: 15
+#check row counts
+NROW(data3)-(NROW(data1)+NROW(data2))
+# equal 0
+remove(data1)
+remove(data2)
+
+#Delete "?"" values
+
+# Observations reduced from 48,842 to 45,222 or 3,620 or 7.4%
+data4 = data3[data3$age !='?' & data3$workclass !='?' & data3$fnlwgt !='?' & data3$education != '?' & data3$educationnum != '?' & data3$maritalstatus != '?' & data3$occupation != '?' & data3$relationship != '?' & data3$race != '?' & data3$sex != '?' & data3$capitalgain != '?' & data3$capitalloss != '?' & data3$hoursperweek != '?' & data3$nativecountry != '?'& data3$class != '?']
+
+```
+
+
+Additional categorial variable were created based on the data.  
+
+These were the following groups
+1. Bachelors level (ba) which if bachelors or above (Masters and Doctorate) was in the education variable it would receive a 1. The input 'some college' receive a 0 rather a 1
+2. Not a High School graduate (nohs) mentioned in the education variable
+3. English as a primary language estimate based on native country (PrimEng).  If native country is from a primary english spoken country than they would receive a 1 and all other would receive a 0
+4. Age grouping (agegrp) based on the age variable
+5. Native to the United States (native) based on the native-country variable
+6. Delete the class variable as I replaced it with binary goal variable
+```{r newvariables}
+
+# If data$goal = 1 then you make more than $50k and if 0 then you do not
+# If data$native = 1 then you are native to the United States and 0 you are not
+
+data4$goal <- as.factor(ifelse(data4$class == '>50K',1,
+                        (ifelse(data4$class == '>50K.',1,0))))
+
+data4$nativecountry <- as.factor(data4$nativecountry)
+
+data4$native <- as.factor(ifelse(data4$nativecountry == 'United-States',1,0))
+#Age groups buckets
+#I assume 65 and older are likely retired and lower earners
+data4$agegrp <- as.factor (ifelse (data4$age <21,'<21',
+                          (ifelse(data4$age >=21 & data4$age<=30,'21-30',
+                          (ifelse(data4$age>=31 & data4$age<=40, '31-40',
+                          (ifelse(data4$age>=41 & data4$age<=50, '41-50',
+                          (ifelse(data4$age>=51 & data4$age<=64, '51-64',
+                          (ifelse(data4$age>64, '65+', NA))))))))))))
+
+#Assuming if english language based on native country.  This actually just seems like my US native bucket and I might eject this
+data4$PrimEng <- as.factor (ifelse (data4$nativecountry =='United-States',1,
+                          (ifelse(data4$nativecountry == 'England',1,
+                          (ifelse(data4$nativecountry =='Canada', 1,
+                          (ifelse(data4$nativecountry =='Scotland', 1,
+                          (ifelse(data4$nativecountry =='Ireland', 1,
+                      (ifelse(data4$nativecountry=='Outlying-US(Guam-USVI-etc)',1,0))))))))))))
+
+#Turn the rest into factors
+  data4$workclass<- as.factor(data4$workclass)
+  data4$education<- as.factor(data4$education)
+  data4$maritalstatus<- as.factor(data4$maritalstatus)
+  data4$occupation <- as.factor(data4$occupation)
+  data4$relationship <- as.factor(data4$relationship)
+  data4$race <- as.factor(data4$race)
+  data4$sex <- as.factor(data4$sex)
+
+#Group at least BA
+  
+data4$ba <- as.factor (ifelse (data4$education =='Bachelors',1,
+                        (ifelse(data4$education == 'Doctorate',1,
+                        (ifelse(data4$education =='Masters', 1,0))))))
+#Group non-HS grads
+
+data4$nohs <- as.factor (ifelse (data4$ba ==1,0,
+                        (ifelse(data4$education == '10th',1,
+                        (ifelse(data4$education == '11th',1,
+                        (ifelse(data4$education == '12th',1,
+                        (ifelse(data4$education == '1st-4th',1,
+                        (ifelse(data4$education == '5th-6th',1,
+                        (ifelse(data4$education == '7th-8th',1,
+                        (ifelse(data4$education == '9th',1,
+                        (ifelse(data4$education == 'Preschool',1,0))))))))))))))))))
+# Variable class as I made binary goal variable
+data4 <- data4[,class:=NULL]
+
+
+```
+Preparing sets:
+
+The first part is to split the data into train, validate and test groups based on 70% train, 15% validate and 15% test.  
+
+```{r split}
+d<-data4
+N <- nrow(d)
+idx <- sample(1:N, 0.7*N)
+d_train <- d[idx,]
+d_valtest <- d[-idx,]
+id_valtest <- sample(1:nrow(d_valtest), 0.5*nrow(d_valtest))
+d_val <- d_valtest[id_valtest,]
+d_test <- d_valtest[-id_valtest,]
+
+X <- Matrix::sparse.model.matrix(goal ~ . - 1, data = d)
+X_train <- X[idx,]
+X_valtest <- X[-idx,]
+X_val <- X_valtest[id_valtest,]
+X_test <- X_valtest[-id_valtest,]
+
+```
+Logistical Regression with R package glmnet
+
+```{r glmnet}
+LRmd <- glmnet( X_train, d_train$goal, family = "binomial", lambda = 0)
+phat <- predict(LRmd, newx = X_val, type = "response")
+
+rocr_pred <- prediction(phat, d_val$goal)
+performance(rocr_pred, "auc")@y.values[[1]]
+#0.9037
+
+```
+```{r LRplot, echo=FALSE}
+plot(performance(rocr_pred, "tpr", "fpr"), main="ROC Curve - Logistical Regression (Validation)")
+
+```
+The ROC curve is a graph of true positive rate versus false postive rate.  The steeper the line moves towards true positive the better the prediction.  The AUC (area under the curve) is 0.9037 which seems pretty good already without regularization and is higher than the 0.5 (a 50/50 probabilty).
+
+Can the AUC improve with some regularization?
+```{r lr_w_reg}
+
+#Get lambda
+LRmd2 <- cv.glmnet( X_train, d_train$goal, family = "binomial", type.measure="auc")
+lambda <- LRmd2$lambda.min
+
+print(lambda)
+#0.0008066403  which seems close to 0
+
+phatlrmd2 <- predict(LRmd2, newx = X_val, type = "response")
+
+rocr_predlrmd2 <- prediction(phatlrmd2, d_val$goal)
+performance(rocr_predlrmd2, "auc")@y.values[[1]]
+#0.9020895
+
+#put lambda min into formula
+LRmd3 <- glmnet(X_train, d_train$goal, family = "binomial", lambda=lambda)
+phatlrmd3 <- predict(LRmd3, newx = X_val, type = "response")
+
+rocr_predlrmd3 <- prediction(phatlrmd3, d_val$goal)
+performance(rocr_predlrmd3, "auc")@y.values[[1]]
+#0.9036641
+
+
+```
+Lambda is very low which is why when the model was set to the minimum of lambda it was roughly the equivalent of logistical regression with no lambda.  It seems in the validation set, that no lambda was slightly better but just slight difference (0.00004).
+
+
+```{r plot of lambda, echo=FALSE}
+plot(performance(rocr_predlrmd3, "tpr", "fpr"), main="ROC Curve - Logistical Regression (Val) w/Lambda")
+
+```
+Using H20 with logistic regression
+
+
+```{r h20}
+h2o.init(nthreads=-1)
+
+#Splitting the data into 3
+hd <- as.h2o(d)
+hd_split <- h2o.splitFrame(hd, ratios = c(0.7, 0.15), seed = 123)
+htrain <- hd_split[[1]]
+hval <- hd_split[[2]]
+htest <- hd_split[[3]]
+
+Xnames <- names(htrain)[which(names(htrain)!="goal")]
+
+LRmd4 <- h2o.glm(x = Xnames, y = "goal", training_frame = htrain, family = "binomial", alpha = 1, lambda = 0)
+
+h2o.auc(h2o.performance(LRmd4, hval))
+#0.9096039    
+
+#with regularization
+LRmd5 <- h2o.glm(x = Xnames, y = "goal", training_frame = htrain, 
+                family = "binomial", alpha = 1, lambda_search=TRUE)
+h2o.auc(h2o.performance(LRmd5, hval))
+#0.9096719
+
+#with lambda from prior lambda minimum
+LRmd6 <- h2o.glm(x = Xnames, y = "goal", training_frame = htrain, 
+                family = "binomial", alpha = 1, lambda=lambda)
+h2o.auc(h2o.performance(LRmd6, hval))
+#0.9085475
+
+
+```
+The R package glmnet had a AUC of about 0.903 but the H20 implement greatly improved the AUC to as high as 0.909.  The use of the minimum lambda in H20 actually worsened the results from lambda = 0 and mirrored the glmnet results.  The best model so far is using H20 with regularization (lambda_search=TRUE)
+
+Random Forest:
+```{r rf, echo=false}
+RF10 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10)
+h2o.auc(h2o.performance(RF10, hval))
+#0.916345   wow, even better
+
+#what happens with increasing depth?
+RF10a <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 50)
+h2o.auc(h2o.performance(RF10a, hval))
+#0.8887764 worse
+
+#what happens with increasing trees? 
+RF50a <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 50, max_depth = 10)
+h2o.auc(h2o.performance(RF50a, hval))
+#0.9187719 so even better than trees=10 depth=10 but takes longer
+# trees = 50 depth = 10 better than t:10 d:10
+
+
+#what happens with increasing trees and depth? Blow up the computer?
+RF50 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 50, max_depth = 50)
+h2o.auc(h2o.performance(RF50, hval))
+#0.9068679 worse
+
+#what happens with increasing trees?
+RF100 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 100, max_depth = 10)
+h2o.auc(h2o.performance(RF100, hval))
+#0.9199142  Maybe increase depth a little
+
+#what happens with increasing trees?
+RF100a <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 100, max_depth = 15)
+h2o.auc(h2o.performance(RF100a, hval))
+#0.9214419  Nice, even better so more trees and not too deep
+
+#what happens with decreasing depth?
+RF100b <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 100, max_depth = 5)
+h2o.auc(h2o.performance(RF100b, hval))
+#0.9101717
+
+#What happens when you restrict the features?
+RF10r10 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10, mtries=10)
+h2o.auc(h2o.performance(RF10r10, hval))
+#0.9171885 which improved on the no feature restriction of 0.916345
+
+RF10r5 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10, mtries=5)
+h2o.auc(h2o.performance(RF10r5, hval))
+#0.918255 which improved on the 10 features
+
+RF10r3 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10, mtries=3)
+h2o.auc(h2o.performance(RF10r3, hval))
+#0.9154633 which worsened from 5 features
+
+#Let's keep 5 features, depth at 10 but increase the trees
+RFbig <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 500, max_depth = 10, mtries=5)
+h2o.auc(h2o.performance(RFbig, hval))
+#0.9206174 but took longer
+
+#Let's keep 5 features, depth at 10 but increase the trees
+RFbigger <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 700, max_depth = 10, mtries=5)
+h2o.auc(h2o.performance(RFbigger, hval))
+#0.9203981 which is worse than tree=500 so probably there is overfitting.  This took really long
+
+
+```
+
+Gradient Boosted Machines
+
+Using H20, we have several drivers to the model (number of trees, depth, learning rate and number of bins)
+
+```{r gbm, ECHO=false}
+GBM10 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                 ntrees = 10, max_depth = 10, learn_rate = 0.1, 
+                 nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM10, hval))
+#0.9193921 which is better than random forest RF10
+
+GBM100 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                 ntrees = 100, max_depth = 10, learn_rate = 0.1, 
+                 nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM100, hval))
+#0.9262021
+
+GBM100a <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                  ntrees = 100, max_depth = 15, learn_rate = 0.1, 
+                  nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM100a, hval))
+#0.9196976 increasing depth worsened results
+
+#what about changing learning?
+GBM100b <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                   ntrees = 100, max_depth = 10, learn_rate = 0.2, 
+                   nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM100b, hval))
+#0.9234138 worse than learn = 0.1
+
+#what about changing learning to smaller?
+GBM100b2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                   ntrees = 100, max_depth = 10, learn_rate = 0.08, 
+                   nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM100b2, hval))
+#0.927351 best so far 
+
+#what about changing learning to smaller?
+GBM100b3 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                    ntrees = 100, max_depth = 10, learn_rate = 0.05, 
+                    nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM100b3, hval))
+#0.9281261
+
+#what about changing learning to smaller?
+GBM100b4 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                    ntrees = 100, max_depth = 10, learn_rate = 0.02, 
+                    nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM100b4, hval))
+#0.9244081 worse
+
+#Change bins
+GBM100c <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                   ntrees = 100, max_depth = 10, learn_rate = 0.1, 
+                   nbins = 20, seed = 123)
+h2o.auc(h2o.performance(GBM100c, hval))
+#0.9268882 improvement but so sligh (0.0008)
+
+#Change bins smaller
+GBM100c2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                   ntrees = 100, max_depth = 10, learn_rate = 0.1, 
+                   nbins = 5, seed = 123)
+h2o.auc(h2o.performance(GBM100c2, hval))
+#0.9260279 
+
+
+GBM500 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                 ntrees = 500, max_depth = 10, learn_rate = 0.1, 
+                 nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM500, hval))
+#0.925479 overfitting
+
+#Try early stops to prevent overfitting
+GBM100b3s10 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                       ntrees = 100, max_depth = 10, learn_rate = 0.05, stopping_round=10, 
+                       nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM100b3s10, hval))
+#0.9281261 vs. 0.9281261 no stopping.  There was no difference 
+
+#Try early stops to prevent overfitting
+GBM100b3s2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                       ntrees = 100, max_depth = 10, learn_rate = 0.05, stopping_round=2, 
+                       nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM100b3s2, hval))
+#0.9281261 no change
+
+#Maybe it will be seen when trees increase
+GBM500b3s2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                      ntrees = 500, max_depth = 10, learn_rate = 0.05, stopping_round=2, 
+                      nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM500b3s2, hval))
+#0.9268309
+
+#
+GBM500b3s2b <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                       ntrees = 500, max_depth = 10, learn_rate = 0.05, stopping_round=2, stopping_tolerance = 0.001, stopping_metric="AUC",
+                       nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM500b3s2b, hval))
+#0.9137522
+
+#Maybe it will be seen when trees increase
+GBM500b3s2a <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                      ntrees = 500, max_depth = 10, learn_rate = 0.1, stopping_round=2, stopping_tolerance = 0.001, stopping_metric="AUC",
+                      nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM500b3s2a, hval))
+#0.925479
+```
+Summary: 
+In a comparison of the three models (LR, RF and GBM), GBM was the best in terms of highest AUC.  There are several levers that could be pulled to further fine tune.  Based on the validation set and
+how it fared with these models, I choose GBM via H20 for the test and it returned an AUC of 0.9265643. 
+
+```{r test}
+GBMtest <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                       ntrees = 100, max_depth = 10, learn_rate = 0.05, stopping_round=10, 
+                       nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBMtest, htest))
+#0.9265643  pretty good
+
+```
+
