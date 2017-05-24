@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 Overview:
 The purpose is to use an UCI dataset as an exploration into machine learning packages with the goal of predicting if someone earns more than $50K/year.
 
-Based on a review of several models, based on AUC (area under the curve), I have decieded to pick GBM using H20.
+Based on a review of several models, based on AUC (area under the curve), I have decided to pick GBM using H20.
 
 Scope of machine learning methods:
 - Logistic Regression (R package glmnet)
