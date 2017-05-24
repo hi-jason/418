@@ -9,16 +9,18 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Part1
+## 
 Overview:
-The purpose is to use an UCI dataset as an exploration into machine learning packages with the goal of predicting if someone earns more than $50K/year
+The purpose is to use an UCI dataset as an exploration into machine learning packages with the goal of predicting if someone earns more than $50K/year.
+
+Based on a review of several models, based on AUC (area under the curve), I have decieded to pick GBM using H20.
 
 Scope of machine learning methods:
 - Logistic Regression (R package glmnet)
 - Logistic Regression with Lasso
 - Logistic Regression (H20)
-- Random Forest (R package xgboost)
-- Gradient Boosting Machines (R package xgboost)
+- Random Forest 
+- Gradient Boosting Machines 
 
 Data:
 This machine learning homework is based on the UCI dataset Census and Income located here: https://archive.ics.uci.edu/ml/datasets/Census+Income.  It is US 1994 Census data setup with each row of data as an individual.  The goal of the dataset is to predict if an individual makes more than $50k/year or less.  There are a total of 48k observations and 14 attributes.
