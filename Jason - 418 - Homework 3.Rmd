@@ -15,6 +15,14 @@ The purpose is to use an UCI dataset as an exploration into machine learning pac
 
 Based on a review of several models, based on AUC (area under the curve), I have decided to pick GBM using H20.
 
+AUC - Based Validation Dataset:
+Logistic Regression: 0.9037 (no Lasso, use glmnet)
+Logistic Regression: 0.9096719 (H20 w/Lasso)
+Best Random Forest: 0.9214419 (H20, T=100)
+GBM: 0.9281261 (H20)
+
+Pick GBM for the Test data: 0.9265643
+
 Scope of machine learning methods:
 - Logistic Regression (R package glmnet)
 - Logistic Regression with Lasso
@@ -86,7 +94,7 @@ These were the following groups
 4. Age grouping (agegrp) based on the age variable
 5. Native to the United States (native) based on the native-country variable
 6. Delete the class variable as I replaced it with binary goal variable
-```{r newvariables}
+```{r newvariables, ECHO=FALSE}
 
 # If data$goal = 1 then you make more than $50k and if 0 then you do not
 # If data$native = 1 then you are native to the United States and 0 you are not
@@ -148,7 +156,7 @@ Preparing sets:
 
 The first part is to split the data into train, validate and test groups based on 70% train, 15% validate and 15% test.  
 
-```{r split}
+```{r split, echo=FALSE}
 d<-data4
 N <- nrow(d)
 idx <- sample(1:N, 0.7*N)
@@ -167,7 +175,7 @@ X_test <- X_valtest[-id_valtest,]
 ```
 Logistic Regression with R package glmnet
 
-```{r glmnet}
+```{r glmnet, ECHO=FALSE}
 LRmd <- glmnet( X_train, d_train$goal, family = "binomial", lambda = 0)
 phat <- predict(LRmd, newx = X_val, type = "response")
 
@@ -183,7 +191,7 @@ plot(performance(rocr_pred, "tpr", "fpr"), main="ROC Curve - Logistic Regression
 The ROC curve is a graph of true positive rate versus false postive rate.  The steeper the line moves towards true positive the better the prediction.  The AUC (area under the curve) is 0.9037 which seems pretty good already without regularization and is higher than the 0.5 (a 50/50 probabilty).
 
 Can the AUC improve with some regularization?
-```{r lr_w_reg}
+```{r lr_w_reg, ECHO=FALSE}
 
 #Get lambda
 LRmd2 <- cv.glmnet( X_train, d_train$goal, family = "binomial", type.measure="auc")
@@ -218,7 +226,7 @@ plot(performance(rocr_predlrmd3, "tpr", "fpr"), main="ROC Curve - Logistic Regre
 Using H20 with logistic regression
 
 
-```{r h20}
+```{r h20, echo=FALSE}
 h2o.init(nthreads=-1)
 
 #Splitting the data into 3
@@ -252,7 +260,7 @@ h2o.auc(h2o.performance(LRmd6, hval))
 The R package glmnet had a AUC of about 0.903 but the H20 implement greatly improved the AUC to as high as 0.909.  The use of the minimum lambda in H20 actually worsened the results from lambda = 0 and mirrored the glmnet results.  The best model so far is using H20 with regularization (lambda_search=TRUE)
 
 Random Forest:
-```{r rf, echo=false}
+```{r rf, ECHO=FALSE}
 RF10 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10)
 h2o.auc(h2o.performance(RF10, hval))
 #0.916345   wow, even better
@@ -319,7 +327,7 @@ Gradient Boosted Machines
 
 Using H20, we have several drivers to the model (number of trees, depth, learning rate and number of bins)
 
-```{r gbm, ECHO=false}
+```{r gbm, ECHO=FALSE}
 GBM10 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                  ntrees = 10, max_depth = 10, learn_rate = 0.1, 
                  nbins = 10, seed = 123)
@@ -426,7 +434,7 @@ Summary:
 In a comparison of the three models (LR, RF and GBM), GBM was the best in terms of highest AUC.  There are several levers that could be pulled to further fine tune.  Based on the validation set and
 how it fared with these models, I choose GBM via H20 for the test and it returned an AUC of 0.9265643. 
 
-```{r test}
+```{r test, ECHO=FALSE}
 GBMtest <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                        ntrees = 100, max_depth = 10, learn_rate = 0.05, stopping_round=10, 
                        nbins = 10, seed = 123)
