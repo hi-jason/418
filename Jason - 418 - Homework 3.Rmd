@@ -16,10 +16,10 @@ The purpose is to use an UCI dataset as an exploration into machine learning pac
 Based on a review of several models, based on AUC (area under the curve), I have decided to pick GBM using H20.
 
 AUC - Based Validation Dataset:
-Logistic Regression: 0.9037 (no Lasso, use glmnet)
-Logistic Regression: 0.9096719 (H20 w/Lasso)
-Best Random Forest: 0.9214419 (H20, T=100)
-GBM: 0.9281261 (H20)
+Logistic Regression: 0.9068846 (no Lasso, use glmnet)
+Logistic Regression: 0.9117622 (H20 w/Lasso)
+Best Random Forest: 0.9209269 (H20, T=100)
+GBM: 0.9271347 (H20)
 
 Pick GBM for the Test data: 0.9265643
 
@@ -43,14 +43,21 @@ Setup Notes & Issues:
 - I have added categories which summarizes several underlining variables 
 
 
-```{r getfiles, echo=FALSE}
+```{r getfiles, ECHO=FALSE, message=FALSE}
 set.seed(123)
+
+
+
 library(data.table)
 library(dplyr)
 library(xgboost)
 library(h2o)
 library(glmnet)
 library(ROCR)
+
+#H20 setup
+h2o.no_progress() # Don't show progress bars in RMarkdown output
+
 
 data1 <- fread('https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data')
 head(data1,2L)
@@ -94,7 +101,7 @@ These were the following groups
 4. Age grouping (agegrp) based on the age variable
 5. Native to the United States (native) based on the native-country variable
 6. Delete the class variable as I replaced it with binary goal variable
-```{r newvariables, ECHO=FALSE}
+```{r newvariables, ECHO=FALSE, message=FALSE}
 
 # If data$goal = 1 then you make more than $50k and if 0 then you do not
 # If data$native = 1 then you are native to the United States and 0 you are not
@@ -156,7 +163,7 @@ Preparing sets:
 
 The first part is to split the data into train, validate and test groups based on 70% train, 15% validate and 15% test.  
 
-```{r split, echo=FALSE}
+```{r split, echo=FALSE, message=FALSE}
 d<-data4
 N <- nrow(d)
 idx <- sample(1:N, 0.7*N)
@@ -181,53 +188,64 @@ phat <- predict(LRmd, newx = X_val, type = "response")
 
 rocr_pred <- prediction(phat, d_val$goal)
 performance(rocr_pred, "auc")@y.values[[1]]
-#0.9037
+
+#First model and very strong AUC without any model and feature tuning
 
 ```
-```{r LRplot, echo=FALSE}
+```{r LRplot, echo=FALSE, message=FALSE}
 plot(performance(rocr_pred, "tpr", "fpr"), main="ROC Curve - Logistic Regression (Validation)")
 
 ```
 The ROC curve is a graph of true positive rate versus false postive rate.  The steeper the line moves towards true positive the better the prediction.  The AUC (area under the curve) is 0.9037 which seems pretty good already without regularization and is higher than the 0.5 (a 50/50 probabilty).
 
 Can the AUC improve with some regularization?
-```{r lr_w_reg, ECHO=FALSE}
+```{r lr_w_reg, ECHO=FALSE, message=FALSE}
 
 #Get lambda
 LRmd2 <- cv.glmnet( X_train, d_train$goal, family = "binomial", type.measure="auc")
 lambda <- LRmd2$lambda.min
 
 print(lambda)
-#0.0008066403  which seems close to 0
+#lambda seems pretty close to 0
 
-phatlrmd2 <- predict(LRmd2, newx = X_val, type = "response")
+```
+```{r system log reg, ECHO=FALSE}
 
+time1<- system.time({phatlrmd2 <- predict(LRmd2, newx = X_val, type = "response")})
+print(time1)
+
+```
+
+```{r log reg, ECHO=FALSE}
 rocr_predlrmd2 <- prediction(phatlrmd2, d_val$goal)
 performance(rocr_predlrmd2, "auc")@y.values[[1]]
-#0.9020895
+```
 
+
+Now put lambda into the equation and calculate AUC
+```{r lambda into formula, ECHO=FALSE}
 #put lambda min into formula
 LRmd3 <- glmnet(X_train, d_train$goal, family = "binomial", lambda=lambda)
 phatlrmd3 <- predict(LRmd3, newx = X_val, type = "response")
 
 rocr_predlrmd3 <- prediction(phatlrmd3, d_val$goal)
 performance(rocr_predlrmd3, "auc")@y.values[[1]]
-#0.9036641
-
-
 ```
+
 Lambda is very low which is why when the model was set to the minimum of lambda it was roughly the equivalent of logistic regression with no lambda.  It seems in the validation set, that no lambda was slightly better but just slight difference (0.00004).
 
 
-```{r plot of lambda, echo=FALSE}
+```{r plot of lambda, echo=FALSE, message=FALSE}
 plot(performance(rocr_predlrmd3, "tpr", "fpr"), main="ROC Curve - Logistic Regression (Val) w/Lambda")
 
 ```
 Using H20 with logistic regression
 
 
-```{r h20, echo=FALSE}
+```{r h20, echo=FALSE, message=FALSE}
+
 h2o.init(nthreads=-1)
+
 
 #Splitting the data into 3
 hd <- as.h2o(d)
@@ -241,205 +259,312 @@ Xnames <- names(htrain)[which(names(htrain)!="goal")]
 LRmd4 <- h2o.glm(x = Xnames, y = "goal", training_frame = htrain, family = "binomial", alpha = 1, lambda = 0)
 
 h2o.auc(h2o.performance(LRmd4, hval))
-#0.9096039    
 
+```
+
+
+```{r reg, ECHO=FALSE}
 #with regularization
 LRmd5 <- h2o.glm(x = Xnames, y = "goal", training_frame = htrain, 
                 family = "binomial", alpha = 1, lambda_search=TRUE)
 h2o.auc(h2o.performance(LRmd5, hval))
-#0.9096719
 
+```
+
+
+Try it with prior minimum Lambda
+```{r with lambda at min, ECHO=FALSE}
 #with lambda from prior lambda minimum
 LRmd6 <- h2o.glm(x = Xnames, y = "goal", training_frame = htrain, 
                 family = "binomial", alpha = 1, lambda=lambda)
 h2o.auc(h2o.performance(LRmd6, hval))
-#0.9085475
-
-
 ```
+
 The R package glmnet had a AUC of about 0.903 but the H20 implement greatly improved the AUC to as high as 0.909.  The use of the minimum lambda in H20 actually worsened the results from lambda = 0 and mirrored the glmnet results.  The best model so far is using H20 with regularization (lambda_search=TRUE)
 
 Random Forest:
-```{r rf, ECHO=FALSE}
+```{r rf, ECHO=FALSE, message=FALSE}
 RF10 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10)
 h2o.auc(h2o.performance(RF10, hval))
-#0.916345   wow, even better
+#wow, even better
+```
 
+
+Trees at 10 and increasing depth to 50
+```{r depth, ECHO=FALSE}
 #what happens with increasing depth?
 RF10a <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 50)
 h2o.auc(h2o.performance(RF10a, hval))
-#0.8887764 worse
+#worse
+```
 
+Increase trees to 50 and depth 10
+```{r 50t 10d, ECHO=FALSE}
 #what happens with increasing trees? 
 RF50a <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 50, max_depth = 10)
 h2o.auc(h2o.performance(RF50a, hval))
-#0.9187719 so even better than trees=10 depth=10 but takes longer
+#even better than trees=10 depth=10 but takes longer
 # trees = 50 depth = 10 better than t:10 d:10
+```
 
-
+Increase trees to 50 and depth 50
+```{r increase50, ECHO=FALSE}
 #what happens with increasing trees and depth? Blow up the computer?
 RF50 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 50, max_depth = 50)
 h2o.auc(h2o.performance(RF50, hval))
-#0.9068679 worse
+#worse, maybe overfitting with the depth
+```
 
+Increase trees to 100
+```{r increase trees 100, ECHO=FALSE}
 #what happens with increasing trees?
 RF100 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 100, max_depth = 10)
 h2o.auc(h2o.performance(RF100, hval))
-#0.9199142  Maybe increase depth a little
+#Maybe increase depth a little
+```
 
+Increase trees to 100 ad depth to 15
+```{r increase trees 100 and depth, ECHO=FALSE}
 #what happens with increasing trees?
 RF100a <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 100, max_depth = 15)
 h2o.auc(h2o.performance(RF100a, hval))
-#0.9214419  Nice, even better so more trees and not too deep
+#Nice, even better so more trees and not too deep
+```
 
+
+Decrease the depth
+```{r decrease depth, ECHO=FALSE}
 #what happens with decreasing depth?
 RF100b <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 100, max_depth = 5)
 h2o.auc(h2o.performance(RF100b, hval))
-#0.9101717
 
+```
+
+
+Restrict features to 10
+```{r 10feat, ECHO=FALSE}
 #What happens when you restrict the features?
 RF10r10 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10, mtries=10)
 h2o.auc(h2o.performance(RF10r10, hval))
-#0.9171885 which improved on the no feature restriction of 0.916345
+#which improved on the no feature restriction 
+```
 
+
+Change the features to 5 with 10 trees and depth of 10 
+```{r 5feat, ECHO=FALSE}
 RF10r5 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10, mtries=5)
 h2o.auc(h2o.performance(RF10r5, hval))
-#0.918255 which improved on the 10 features
+#which improved on the 10 features
+```
 
+
+Change the number of features
+```{r feat change, ECHO=FALSE}
 RF10r3 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10, mtries=3)
 h2o.auc(h2o.performance(RF10r3, hval))
-#0.9154633 which worsened from 5 features
+#which worsened from 5 features
+```
 
+
+Increase the trees
+```{r big, ECHO=FALSE}
 #Let's keep 5 features, depth at 10 but increase the trees
 RFbig <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 500, max_depth = 10, mtries=5)
 h2o.auc(h2o.performance(RFbig, hval))
 #0.9206174 but took longer
-
-#Let's keep 5 features, depth at 10 but increase the trees
-RFbigger <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 700, max_depth = 10, mtries=5)
-h2o.auc(h2o.performance(RFbigger, hval))
-#0.9203981 which is worse than tree=500 so probably there is overfitting.  This took really long
-
-
 ```
+
+System time of big model
+```{r bigger, ECHO=FALSE}
+#Let's keep 5 features, depth at 10 but increase the trees
+time2<-system.time(RFbigger <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 700, max_depth = 10, mtries=5))
+
+print(time2)
+```
+Bigger model
+```{r bigger AUC, ECHO=FALSE}
+
+h2o.auc(h2o.performance(RFbigger, hval))
+#which is worse than tree=500 so probably there is overfitting.  This took really long
+```
+
 
 Gradient Boosted Machines
 
 Using H20, we have several drivers to the model (number of trees, depth, learning rate and number of bins)
 
-```{r gbm, ECHO=FALSE}
+```{r gbm, ECHO=FALSE, message=FALSE}
 GBM10 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                  ntrees = 10, max_depth = 10, learn_rate = 0.1, 
                  nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM10, hval))
-#0.9193921 which is better than random forest RF10
+#better than random forest RF10
+```
 
+Trees= 100, depth 10
+```{r gbm2, ECHO=FALSE}
 GBM100 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                  ntrees = 100, max_depth = 10, learn_rate = 0.1, 
                  nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM100, hval))
-#0.9262021
+```
 
+Trees=100, depth 15
+```{r gbm3, ECHO=FALSE}
 GBM100a <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                   ntrees = 100, max_depth = 15, learn_rate = 0.1, 
                   nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM100a, hval))
-#0.9196976 increasing depth worsened results
+#increasing depth worsened results
 
+```
+
+Learning rate to 0.2
+```{r lr1, ECHO=FALSE}
 #what about changing learning?
 GBM100b <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                    ntrees = 100, max_depth = 10, learn_rate = 0.2, 
                    nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM100b, hval))
-#0.9234138 worse than learn = 0.1
 
+```
+
+Learning rate to 0.08
+```{r lr2, ECHO=FALSE}
 #what about changing learning to smaller?
 GBM100b2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                    ntrees = 100, max_depth = 10, learn_rate = 0.08, 
                    nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM100b2, hval))
-#0.927351 best so far 
 
+```
+
+Learning rate to 0.05
+```{r lr3, ECHO=FALSE}
 #what about changing learning to smaller?
 GBM100b3 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                     ntrees = 100, max_depth = 10, learn_rate = 0.05, 
                     nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM100b3, hval))
 #0.9281261
+#best so far
+```
 
+Learn rate to 0.02
+```{r lr4, ECHO=FALSE}
 #what about changing learning to smaller?
 GBM100b4 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                     ntrees = 100, max_depth = 10, learn_rate = 0.02, 
                     nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM100b4, hval))
-#0.9244081 worse
+#worse, looks like the decreasing the learning rate was a detriment
+```
 
+Bin change to 20
+```{r change bins, ECHO=FALSE}
 #Change bins
 GBM100c <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                    ntrees = 100, max_depth = 10, learn_rate = 0.1, 
                    nbins = 20, seed = 123)
 h2o.auc(h2o.performance(GBM100c, hval))
-#0.9268882 improvement but so sligh (0.0008)
+#improvement but so slight 
+```
 
+Smaller bins
+```{r bins, ECHO=FALSE}
 #Change bins smaller
 GBM100c2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                    ntrees = 100, max_depth = 10, learn_rate = 0.1, 
                    nbins = 5, seed = 123)
 h2o.auc(h2o.performance(GBM100c2, hval))
-#0.9260279 
+#smaller bins improved results
+```
 
-
+600 trees
+```{r 600t, ECHO=FALSE}
 GBM500 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
-                 ntrees = 500, max_depth = 10, learn_rate = 0.1, 
+                 ntrees = 600, max_depth = 10, learn_rate = 0.1, 
                  nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM500, hval))
-#0.925479 overfitting
+#likely overfitting
+```
 
+Try early stops of 10 to prevent overfitting
+```{r early 1, ECHO=FALSE}
 #Try early stops to prevent overfitting
-GBM100b3s10 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+time3<-system.time(GBM100b3s10 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                        ntrees = 100, max_depth = 10, learn_rate = 0.05, stopping_round=10, 
-                       nbins = 10, seed = 123)
-h2o.auc(h2o.performance(GBM100b3s10, hval))
-#0.9281261 vs. 0.9281261 no stopping.  There was no difference 
+                       nbins = 10, seed = 123))
+ 
+```
 
-#Try early stops to prevent overfitting
+```{r early1, ECHO=FALSE}
+h2o.auc(h2o.performance(GBM100b3s10, hval))
+#There was no difference
+```
+
+
+Try early stops of 2 to prevent overfitting
+```{r early 2, ECHO=FALSE}
+
 GBM100b3s2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                        ntrees = 100, max_depth = 10, learn_rate = 0.05, stopping_round=2, 
                        nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM100b3s2, hval))
-#0.9281261 no change
+#no change
+```
 
+Increase trees to 500
+```{r 500t, ECHO=FALSE}
 #Maybe it will be seen when trees increase
 GBM500b3s2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                       ntrees = 500, max_depth = 10, learn_rate = 0.05, stopping_round=2, 
                       nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM500b3s2, hval))
 #0.9268309
+```
 
-#
+With stopping tolerance to prevent overfit
+```{r increase trees, ECHO=FALSE}
+#Increasing the trees
 GBM500b3s2b <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                        ntrees = 500, max_depth = 10, learn_rate = 0.05, stopping_round=2, stopping_tolerance = 0.001, stopping_metric="AUC",
                        nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM500b3s2b, hval))
-#0.9137522
+```
 
+
+#0.9137522
+```{r gbm GBM100b3s2, ECHO=FALSE}
 #Maybe it will be seen when trees increase
 GBM500b3s2a <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                       ntrees = 500, max_depth = 10, learn_rate = 0.1, stopping_round=2, stopping_tolerance = 0.001, stopping_metric="AUC",
                       nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM500b3s2a, hval))
-#0.925479
+
 ```
 Summary: 
-In a comparison of the three models (LR, RF and GBM), GBM was the best in terms of highest AUC.  There are several levers that could be pulled to further fine tune.  Based on the validation set and
-how it fared with these models, I choose GBM via H20 for the test and it returned an AUC of 0.9265643. 
+In a comparison of the three models (LR, RF and GBM), GBM was the best in terms of highest AUC.  There are several levers that could be pulled to further fine tune the model.  Based on the validation set and how it fared with these models, I choose GBM via H20 for the test and it returned an AUC of 0.9265643.  Although not as fast as LR (0.01 sec) with a AUC of 0.90 (validation set), GBM was balanced with moderate (13 sec) and a good AUC of 0.92 (test set) in comparison to the larger Random Forest (47 sec) and a AUC of 0.92 (validation set).  In larger data set, I would definetly start off with LR to get a sense of the model and then based on time and resource contraints I would explore GBM.  My final choice could have been more finely refined and with random selection and perhaps ensemble models it could further improve.     
 
-```{r test, ECHO=FALSE}
-GBMtest <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+
+
+System time on GBMtest
+```{r test, ECHO=FALSE, message=FALSE}
+tfinal<-system.time({GBMtest <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
                        ntrees = 100, max_depth = 10, learn_rate = 0.05, stopping_round=10, 
-                       nbins = 10, seed = 123)
-h2o.auc(h2o.performance(GBMtest, htest))
-#0.9265643  pretty good
+                       nbins = 10, seed = 123)})
 
+```
+
+```{r test data, ECHO=FALSE}
+h2o.auc(h2o.performance(GBMtest, htest))
+#0.9265643  pretty good)
+```
+```{r final, ECHO=FALSE}
+print(GBMtest)
+
+```
+```{r timefinal, ECHO=FALSE}
+print(tfinal)
 ```
 
