@@ -5,45 +5,47 @@ date: "May 23, 2017"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, ECHO=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## 
-Overview:
+ 
+#Overview:
 The purpose is to use an UCI dataset as an exploration into machine learning packages with the goal of predicting if someone earns more than $50K/year.
 
-Based on a review of several models, based on AUC (area under the curve), I have decided to pick GBM using H20.
+Based on a review of several models, based on AUC (area under the curve), I have decided to pick GBM using H20 and it had an AUC of 0.9265643.  The model decision was based on the results from the validation set where GBM preformed about ~0.06 better than the random forest models.
 
-AUC - Based Validation Dataset:
-Logistic Regression: 0.9068846 (no Lasso, use glmnet)
-Logistic Regression: 0.9117622 (H20 w/Lasso)
-Best Random Forest: 0.9209269 (H20, T=100)
-GBM: 0.9271347 (H20)
+Based on validation data set:
 
-Pick GBM for the Test data: 0.9265643
+Model              |  AUC      | Notes
+-------------------|-----------|---------------------
+Logistic Regression| 0.9068846 | no Lasso, use glmnet
+Logistic Regression| 0.9117622 | H2O w/Lasso
+Random Forest      | 0.9209269 | H2O w/Tress=100
+GBM                | 0.9271347 | H2O
 
-Scope of machine learning methods:
-- Logistic Regression (R package glmnet)
-- Logistic Regression with Lasso
-- Logistic Regression (H20)
-- Random Forest 
-- Gradient Boosting Machines 
 
-Data:
+#Scope of machine learning methods:
+1. Logistic Regression (R package glmnet)
+2. Logistic Regression with Lasso
+3. Logistic Regression (H20)
+4. Random Forest 
+5. Gradient Boosting Machines 
+
+#Data:
 This machine learning homework is based on the UCI dataset Census and Income located here: https://archive.ics.uci.edu/ml/datasets/Census+Income.  It is US 1994 Census data setup with each row of data as an individual.  The goal of the dataset is to predict if an individual makes more than $50k/year or less.  There are a total of 48k observations and 14 attributes.
 
-Setup Notes & Issues:
-- A quick look at the goal and about 2/3 of the dataset population make less than $50K/year   
-- Online, the author has already split the dataset to train and test.  The train file didn't meet the homework requirements for the amount of positive results alone.  I therefore merged the two together and then split it based on my own random number (set.seed(123)).
-- Original authors eliminated all rows with Nulls reducing the observations from 48k to 45k (7%).  As the goal is to explore several machine learning packages and compare AUC and as it still is a significant number, I'm going to elminate null value rows.  A future project could look into predicting and filling in the gaps.
-- The variable education which describes the most education tier the individual accomplished is very similar to the education-num which is the numerical equivalent. 
-- The data is not ready for entering into the various models as its not binary, or factors and needs to be adjusted to machine learning packages
-- I have transformed attributes into a binary and factors
-- I have added categories which summarizes several underlining variables 
+#Setup Notes & Issues:
+1. A quick look at the goal and about 2/3 of the dataset population make less than $50K/year   
+2.  Online, the author has already split the dataset to train and test.  The train file didn't meet the homework requirements for the amount of positive results alone.  I therefore merged the two together and then split it based on my own random number (set.seed(123)).
+3. Original authors eliminated all rows with Nulls reducing the observations from 48k to 45k (7%).  As the goal is to explore several machine learning packages and compare AUC and as it still is a significant number, I'm going to elminate null value rows.  A future project could look into predicting and filling in the gaps.
+4. The variable education which describes the most education tier the individual accomplished is very similar to the education-num which is the numerical equivalent. 
+5. The data is not ready for entering into the various models as its not binary, or factors and needs to be adjusted to machine learning packages
+6. I have transformed attributes into a binary and factors
+7. I have added categories which summarizes several underlining variables 
 
 
-```{r getfiles, ECHO=FALSE, message=FALSE}
+```{r getfiles, ECHO=FALSE, message=FALSE, warning=FALSE}
 set.seed(123)
 
 
@@ -94,13 +96,13 @@ data4 = data3[data3$age !='?' & data3$workclass !='?' & data3$fnlwgt !='?' & dat
 
 Additional categorial variable were created based on the data.  
 
-These were the following groups
-1. Bachelors level (ba) which if bachelors or above (Masters and Doctorate) was in the education variable it would receive a 1. The input 'some college' receive a 0 rather a 1
-2. Not a High School graduate (nohs) mentioned in the education variable
-3. English as a primary language estimate based on native country (PrimEng).  If native country is from a primary english spoken country than they would receive a 1 and all other would receive a 0
-4. Age grouping (agegrp) based on the age variable
-5. Native to the United States (native) based on the native-country variable
-6. Delete the class variable as I replaced it with binary goal variable
+* These were the following groups
++ Bachelors level (ba) which if bachelors or above (Masters and Doctorate) was in the education variable it would receive a 1. The input 'some college' receive a 0 rather a 1
++ Not a High School graduate (nohs) mentioned in the education variable
++ English as a primary language estimate based on native country (PrimEng).  If native country is from a primary english spoken country than they would receive a 1 and all other would receive a 0
++ Age grouping (agegrp) based on the age variable
++ Native to the United States (native) based on the native-country variable
++ Delete the class variable as I replaced it with binary goal variable
 ```{r newvariables, ECHO=FALSE, message=FALSE}
 
 # If data$goal = 1 then you make more than $50k and if 0 then you do not
@@ -159,7 +161,7 @@ data4 <- data4[,class:=NULL]
 
 
 ```
-Preparing sets:
+#Preparing sets:
 
 The first part is to split the data into train, validate and test groups based on 70% train, 15% validate and 15% test.  
 
@@ -180,7 +182,7 @@ X_val <- X_valtest[id_valtest,]
 X_test <- X_valtest[-id_valtest,]
 
 ```
-Logistic Regression with R package glmnet
+#Logistic Regression with R package glmnet
 
 ```{r glmnet, ECHO=FALSE}
 LRmd <- glmnet( X_train, d_train$goal, family = "binomial", lambda = 0)
@@ -196,6 +198,8 @@ performance(rocr_pred, "auc")@y.values[[1]]
 plot(performance(rocr_pred, "tpr", "fpr"), main="ROC Curve - Logistic Regression (Validation)")
 
 ```
+
+
 The ROC curve is a graph of true positive rate versus false postive rate.  The steeper the line moves towards true positive the better the prediction.  The AUC (area under the curve) is 0.9037 which seems pretty good already without regularization and is higher than the 0.5 (a 50/50 probabilty).
 
 Can the AUC improve with some regularization?
@@ -239,13 +243,17 @@ Lambda is very low which is why when the model was set to the minimum of lambda 
 plot(performance(rocr_predlrmd3, "tpr", "fpr"), main="ROC Curve - Logistic Regression (Val) w/Lambda")
 
 ```
-Using H20 with logistic regression
+#Using H20 with logistic regression
+
+
+
+```{r h2o startup, ECHO=FALSE, MESSAGE=FALSE, RESULTS=FALSE, warning=FALSE}
+
+h2o.init(nthreads=-1)
+```
 
 
 ```{r h20, echo=FALSE, message=FALSE}
-
-h2o.init(nthreads=-1)
-
 
 #Splitting the data into 3
 hd <- as.h2o(d)
@@ -280,9 +288,9 @@ LRmd6 <- h2o.glm(x = Xnames, y = "goal", training_frame = htrain,
 h2o.auc(h2o.performance(LRmd6, hval))
 ```
 
-The R package glmnet had a AUC of about 0.903 but the H20 implement greatly improved the AUC to as high as 0.909.  The use of the minimum lambda in H20 actually worsened the results from lambda = 0 and mirrored the glmnet results.  The best model so far is using H20 with regularization (lambda_search=TRUE)
+The R package glmnet had a AUC of about 0.903 but the H20 implement greatly improved the AUC to as high as 0.91.  The use of the minimum lambda in H20 actually worsened the results from lambda = 0 and mirrored the glmnet results.  The best model so far is using H20 with regularization (lambda_search=TRUE)
 
-Random Forest:
+#Random Forest:
 ```{r rf, ECHO=FALSE, message=FALSE}
 RF10 <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 10, max_depth = 10)
 h2o.auc(h2o.performance(RF10, hval))
@@ -323,7 +331,7 @@ h2o.auc(h2o.performance(RF100, hval))
 #Maybe increase depth a little
 ```
 
-Increase trees to 100 ad depth to 15
+Increase trees to 100 and depth to 15
 ```{r increase trees 100 and depth, ECHO=FALSE}
 #what happens with increasing trees?
 RF100a <- h2o.randomForest(x = Xnames, y = "goal", training_frame = htrain, ntrees = 100, max_depth = 15)
@@ -389,7 +397,7 @@ h2o.auc(h2o.performance(RFbigger, hval))
 ```
 
 
-Gradient Boosted Machines
+#Gradient Boosted Machines
 
 Using H20, we have several drivers to the model (number of trees, depth, learning rate and number of bins)
 
@@ -524,7 +532,7 @@ h2o.auc(h2o.performance(GBM500b3s2, hval))
 #0.9268309
 ```
 
-With stopping tolerance to prevent overfit
+Adding a stopping tolerance to prevent overfit
 ```{r increase trees, ECHO=FALSE}
 #Increasing the trees
 GBM500b3s2b <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
@@ -532,9 +540,17 @@ GBM500b3s2b <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribu
                        nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM500b3s2b, hval))
 ```
+Big run but with stopping to limit overfitting.  I'm going to loosen the stopping tolerance and increasing the stopping round such that it would stop if in 5 rounds it doesn't improve 0.0001
+```{r stopping 1, ECHO=FALSE}
+#Increasing the trees
+GBM700 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
+                       ntrees = 700, max_depth = 15, learn_rate = 0.05, stopping_round=5, stopping_tolerance = .00001, stopping_metric="AUC",
+                       nbins = 10, seed = 123)
+h2o.auc(h2o.performance(GBM700, hval))
+```
 
 
-#0.9137522
+
 ```{r gbm GBM100b3s2, ECHO=FALSE}
 #Maybe it will be seen when trees increase
 GBM500b3s2a <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
@@ -543,7 +559,7 @@ GBM500b3s2a <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribu
 h2o.auc(h2o.performance(GBM500b3s2a, hval))
 
 ```
-Summary: 
+#Summary: 
 In a comparison of the three models (LR, RF and GBM), GBM was the best in terms of highest AUC.  There are several levers that could be pulled to further fine tune the model.  Based on the validation set and how it fared with these models, I choose GBM via H20 for the test and it returned an AUC of 0.9265643.  Although not as fast as LR (0.01 sec) with a AUC of 0.90 (validation set), GBM was balanced with moderate (13 sec) and a good AUC of 0.92 (test set) in comparison to the larger Random Forest (47 sec) and a AUC of 0.92 (validation set).  In larger data set, I would definetly start off with LR to get a sense of the model and then based on time and resource contraints I would explore GBM.  My final choice could have been more finely refined and with random selection and perhaps ensemble models it could further improve.     
 
 
