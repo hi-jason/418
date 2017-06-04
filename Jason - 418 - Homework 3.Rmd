@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
  
 #Overview:
-The purpose is to use an UCI dataset as an exploration into machine learning packages with the goal of predicting if someone earns more than $50K/year.
+The purpose is to use an UCI data set as an exploration into machine learning packages with the goal of predicting if someone earns more than $50K/year.
 
 Based on a review of several models, based on AUC (area under the curve), I have decided to pick GBM using H20 and it had an AUC of 0.9265643.  The model decision was based on the results from the validation set where GBM preformed about ~0.06 better than the random forest models.
 
@@ -21,7 +21,7 @@ Model              |  AUC      | Notes
 -------------------|-----------|---------------------
 Logistic Regression| 0.9068846 | no Lasso, use glmnet
 Logistic Regression| 0.9117622 | H2O w/Lasso
-Random Forest      | 0.9209269 | H2O w/Tress=100
+Random Forest      | 0.9209269 | H2O w/Trees=100
 GBM                | 0.9271347 | H2O
 
 
@@ -33,12 +33,12 @@ GBM                | 0.9271347 | H2O
 5. Gradient Boosting Machines 
 
 #Data:
-This machine learning homework is based on the UCI dataset Census and Income located here: https://archive.ics.uci.edu/ml/datasets/Census+Income.  It is US 1994 Census data setup with each row of data as an individual.  The goal of the dataset is to predict if an individual makes more than $50k/year or less.  There are a total of 48k observations and 14 attributes.
+This machine learning homework is based on the UCI data set Census and Income located here: https://archive.ics.uci.edu/ml/datasets/Census+Income.  It is US 1994 Census data setup with each row of data as an individual.  The goal of the data set is to predict if an individual makes more than $50k/year or less.  There are a total of 48k observations and 14 attributes.
 
 #Setup Notes & Issues:
-1. A quick look at the goal and about 2/3 of the dataset population make less than $50K/year   
-2.  Online, the author has already split the dataset to train and test.  The train file didn't meet the homework requirements for the amount of positive results alone.  I therefore merged the two together and then split it based on my own random number (set.seed(123)).
-3. Original authors eliminated all rows with Nulls reducing the observations from 48k to 45k (7%).  As the goal is to explore several machine learning packages and compare AUC and as it still is a significant number, I'm going to elminate null value rows.  A future project could look into predicting and filling in the gaps.
+1. A quick look at the goal and about 2/3 of the data set population make less than $50K/year   
+2.  Online, the author has already split the data set to train and test.  The train file didn't meet the homework requirements for the amount of positive results alone.  I therefore merged the two together and then split it based on my own random number (set.seed(123)).
+3. Original authors eliminated all rows with Nulls reducing the observations from 48k to 45k (7%).  As the goal is to explore several machine learning packages and compare AUC and as it still is a significant number, I'm going to eliminate null value rows.  A future project could look into predicting and filling in the gaps.
 4. The variable education which describes the most education tier the individual accomplished is very similar to the education-num which is the numerical equivalent. 
 5. The data is not ready for entering into the various models as its not binary, or factors and needs to be adjusted to machine learning packages
 6. I have transformed attributes into a binary and factors
@@ -94,12 +94,12 @@ data4 = data3[data3$age !='?' & data3$workclass !='?' & data3$fnlwgt !='?' & dat
 ```
 
 
-Additional categorial variable were created based on the data.  
+Additional categorical variables were created based on the data.  
 
 * These were the following groups
 + Bachelors level (ba) which if bachelors or above (Masters and Doctorate) was in the education variable it would receive a 1. The input 'some college' receive a 0 rather a 1
 + Not a High School graduate (nohs) mentioned in the education variable
-+ English as a primary language estimate based on native country (PrimEng).  If native country is from a primary english spoken country than they would receive a 1 and all other would receive a 0
++ English as a primary language estimate based on native country (PrimEng).  If native country is from a primary English spoken country than they would receive a 1 and all other would receive a 0
 + Age grouping (agegrp) based on the age variable
 + Native to the United States (native) based on the native-country variable
 + Delete the class variable as I replaced it with binary goal variable
@@ -165,7 +165,7 @@ data4 <- data4[,class:=NULL]
 
 The first part is to split the data into train, validate and test groups based on 70% train, 15% validate and 15% test.  
 
-```{r split, echo=FALSE, message=FALSE}
+```{r split, ECHO=FALSE}
 d<-data4
 N <- nrow(d)
 idx <- sample(1:N, 0.7*N)
@@ -200,7 +200,7 @@ plot(performance(rocr_pred, "tpr", "fpr"), main="ROC Curve - Logistic Regression
 ```
 
 
-The ROC curve is a graph of true positive rate versus false postive rate.  The steeper the line moves towards true positive the better the prediction.  The AUC (area under the curve) is 0.9037 which seems pretty good already without regularization and is higher than the 0.5 (a 50/50 probabilty).
+The ROC curve is a graph of true positive rate versus false positive rate.  The steeper the line moves towards true positive the better the prediction.  The AUC (area under the curve) is 0.9037 which seems pretty good already without regularization and is higher than the 0.5 (a 50/50 probability).
 
 Can the AUC improve with some regularization?
 ```{r lr_w_reg, ECHO=FALSE, message=FALSE}
@@ -497,7 +497,7 @@ h2o.auc(h2o.performance(GBM500, hval))
 #likely overfitting
 ```
 
-Try early stops of 10 to prevent overfitting
+Try early stops of 10 to prevent over-fitting
 ```{r early 1, ECHO=FALSE}
 #Try early stops to prevent overfitting
 time3<-system.time(GBM100b3s10 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
@@ -512,7 +512,7 @@ h2o.auc(h2o.performance(GBM100b3s10, hval))
 ```
 
 
-Try early stops of 2 to prevent overfitting
+Try early stops of 2 to prevent over-fitting
 ```{r early 2, ECHO=FALSE}
 
 GBM100b3s2 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
@@ -532,7 +532,7 @@ h2o.auc(h2o.performance(GBM500b3s2, hval))
 #0.9268309
 ```
 
-Adding a stopping tolerance to prevent overfit
+Adding a stopping tolerance to prevent over-fit
 ```{r increase trees, ECHO=FALSE}
 #Increasing the trees
 GBM500b3s2b <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
@@ -540,7 +540,7 @@ GBM500b3s2b <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribu
                        nbins = 10, seed = 123)
 h2o.auc(h2o.performance(GBM500b3s2b, hval))
 ```
-Big run but with stopping to limit overfitting.  I'm going to loosen the stopping tolerance and increasing the stopping round such that it would stop if in 5 rounds it doesn't improve 0.0001
+Big run but with stopping to limit over-fitting.  I'm going to loosen the stopping tolerance and increasing the stopping round such that it would stop if in 5 rounds it doesn't improve 0.0001
 ```{r stopping 1, ECHO=FALSE}
 #Increasing the trees
 GBM700 <- h2o.gbm(x = Xnames, y = "goal", training_frame = htrain, distribution = "bernoulli", 
@@ -560,7 +560,7 @@ h2o.auc(h2o.performance(GBM500b3s2a, hval))
 
 ```
 #Summary: 
-In a comparison of the three models (LR, RF and GBM), GBM was the best in terms of highest AUC.  There are several levers that could be pulled to further fine tune the model.  Based on the validation set and how it fared with these models, I choose GBM via H20 for the test and it returned an AUC of 0.9265643.  Although not as fast as LR (0.01 sec) with a AUC of 0.90 (validation set), GBM was balanced with moderate (13 sec) and a good AUC of 0.92 (test set) in comparison to the larger Random Forest (47 sec) and a AUC of 0.92 (validation set).  In larger data set, I would definetly start off with LR to get a sense of the model and then based on time and resource contraints I would explore GBM.  My final choice could have been more finely refined and with random selection and perhaps ensemble models it could further improve.     
+In a comparison of the three models (LR, RF and GBM), GBM was the best in terms of highest AUC.  There are several levers that could be pulled to further fine tune the model.  Based on the validation set and how it fared with these models, I choose GBM via H20 for the test and it returned an AUC of 0.9265643.  Although not as fast as LR (0.01 sec) with a AUC of 0.90 (validation set), GBM was balanced with moderate (13 sec) and a good AUC of 0.92 (test set) in comparison to the larger Random Forest (47 sec) and a AUC of 0.92 (validation set).  In larger data set, I would definitely start off with LR to get a sense of the model and then based on time and resource constraints I would explore GBM.  My final choice could have been more finely refined and with random selection and perhaps ensemble models it could further improve.     
 
 
 
